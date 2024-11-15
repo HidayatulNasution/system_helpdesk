@@ -60,6 +60,9 @@ Route::get('user/Detail/{id}', [UserController::class, 'showDetail'])->middlewar
 Route::get('user/Delete/{id}', [UserController::class, 'destroy'])->middleware('auth');
 // PDF
 Route::get('generate-pdf', [adminController::class, 'generatePDF'])->name('generatePDF');
+// Excel
+Route::get('export-users', [adminController::class, 'index']);  // Route untuk menampilkan halaman
+Route::get('export-users/excel', [adminController::class, 'exportTiketsToExcel'])->name('export.tikets');  // Route untuk mengekspor data
 
 
 Route::group(['middleware' => 'auth'], function () {

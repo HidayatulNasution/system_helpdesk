@@ -10,6 +10,12 @@ use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Response;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\Font;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
 
 class adminController extends Controller
 {
@@ -230,6 +236,11 @@ class adminController extends Controller
 
         $tikets = $tikets->get();
 
+        // If no data is found, return with an error message
+        if ($tikets->isEmpty()) {
+            return redirect()->back()->with('error', 'No Data Available');
+        }
+
         $data = [
             'title' => 'Report Tiket',
             'date' => date('m/d/Y'),
@@ -237,6 +248,159 @@ class adminController extends Controller
         ];
 
         $pdf = PDF::loadView('admin.tiketsPdf', $data);
-        return $pdf->download('Report_Tiket.pdf');
+        return $pdf->download('Report_Tiket_' . now()->format('d-m-Y_His') . '.pdf');
+    }
+
+    public function exportTiketsToExcel()
+    {
+        $tikets = admin::with('user')->select('*')->where('status', 1);
+        $month = request()->get('month');
+        $year = request()->get('year');
+
+        // Filter berdasarkan bulan jika ada
+        if ($month) {
+            $tikets->whereMonth('created_at', $month);
+        }
+
+        // Filter berdasarkan tahun jika ada
+        if ($year) {
+            $tikets->whereYear('created_at', $year);
+        }
+
+        $tikets = $tikets->get();
+
+        // Jika data tidak ditemukan, kirim respons SweetAlert
+        if ($tikets->isEmpty()) {
+            return response()->json(['status' => 'error', 'message' => 'Download Summary Data']);
+        }
+
+        // Tentukan periode berdasarkan created_at
+        $startDate = $tikets->min('created_at');
+        $endDate = $tikets->max('created_at');
+        $period = 'Periode: ' . $startDate->format('d/m/Y') . ' - ' . $endDate->format('d/m/Y');
+
+        // Membuat objek Spreadsheet baru
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // Judul di tengah
+        $sheet->setCellValue('A1', 'Report Tiket');
+        $sheet->mergeCells('A1:H1');
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(20);
+        $sheet->getStyle('A1')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+        // Tambahkan periode di bawah judul
+        $sheet->setCellValue('A2', $period);
+        $sheet->mergeCells('A2:H2');
+        $sheet->getStyle('A2')->getFont()->setItalic(true)->setSize(12);
+        $sheet->getStyle('A2')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+
+        // Gaya untuk header
+        $sheet->setCellValue('A4', 'No');
+        $sheet->setCellValue('B4', 'Username');
+        $sheet->setCellValue('C4', 'Bidang System');
+        $sheet->setCellValue('D4', 'Kategori');
+        $sheet->setCellValue('E4', 'Status');
+        $sheet->setCellValue('F4', 'Problem');
+        $sheet->setCellValue('G4', 'Result');
+        $sheet->setCellValue('H4', 'Prioritas');
+
+        $headerStyle = [
+            'font' => [
+                'bold' => true,
+                'size' => 12,
+                'color' => ['rgb' => 'FFFFFF']
+            ],
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_CENTER,
+                'vertical' => Alignment::VERTICAL_CENTER,
+            ],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['rgb' => '4CAF50']
+            ],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => '000000'],
+                ]
+            ],
+        ];
+
+        // Terapkan gaya ke header
+        $sheet->getStyle('A4:H4')->applyFromArray($headerStyle);
+
+        // Gaya untuk data rata kiri
+        $leftAlignedStyle = [
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_LEFT,
+                'vertical' => Alignment::VERTICAL_CENTER,
+            ],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => '000000'],
+                ]
+            ],
+        ];
+
+        // Gaya untuk data rata tengah
+        $centerAlignedStyle = [
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_CENTER,
+                'vertical' => Alignment::VERTICAL_CENTER,
+            ],
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => '000000'],
+                ]
+            ],
+        ];
+
+        // Isi data ke dalam tabel Excel
+        $row = 5;
+        $nomorUrut = 1; // Menambahkan nomor urut
+        foreach ($tikets as $tiket) {
+            $statusText = $tiket->status == 1 ? 'DONE' : 'On Progress';
+            $prioritasText = $tiket->prioritas == 1 ? 'URGENT' : 'BIASA';
+            $username = $tiket->user ? $tiket->user->username : 'N/A'; // Cek jika username tersedia
+
+            $sheet->setCellValue('A' . $row, $nomorUrut);
+            $sheet->setCellValue('B' . $row, $username);
+            $sheet->setCellValue('C' . $row, $tiket->bidang_system);
+            $sheet->setCellValue('D' . $row, $tiket->kategori);
+            $sheet->setCellValue('E' . $row, $statusText);
+            $sheet->setCellValue('F' . $row, $tiket->problem);
+            $sheet->setCellValue('G' . $row, $tiket->result);
+            $sheet->setCellValue('H' . $row, $prioritasText);
+
+            // Terapkan gaya pada kolom
+            $sheet->getStyle('B' . $row)->applyFromArray($leftAlignedStyle);
+            $sheet->getStyle('C' . $row)->applyFromArray($leftAlignedStyle);
+            $sheet->getStyle('D' . $row)->applyFromArray($leftAlignedStyle);
+            $sheet->getStyle('F' . $row)->applyFromArray($leftAlignedStyle);
+            $sheet->getStyle('G' . $row)->applyFromArray($leftAlignedStyle);
+            $sheet->getStyle('A' . $row)->applyFromArray($centerAlignedStyle);
+            $sheet->getStyle('E' . $row)->applyFromArray($centerAlignedStyle);
+            $sheet->getStyle('H' . $row)->applyFromArray($centerAlignedStyle);
+
+            $row++;
+            $nomorUrut++;
+        }
+
+        // Set lebar kolom agar lebih rapi
+        foreach (range('A', 'H') as $columnID) {
+            $sheet->getColumnDimension($columnID)->setAutoSize(true);
+        }
+
+        // Simpan file Excel
+        $writer = new Xlsx($spreadsheet);
+        $fileName = 'report_tiket_' . now()->format('d-m-Y_His') . '.xlsx';
+        $path = storage_path('app/public/' . $fileName);
+        $writer->save($path);
+
+        // Memberikan respons untuk mengunduh file
+        return response()->download($path);
     }
 }

@@ -27,13 +27,19 @@
             </select>
             <button id="filter-button" class="bg-blue-400 btn-warning text-white px-4 py-2 rounded mr-3">🔍
                 Filter</button>
-            {{-- <a href="javascript:void(0)" id="download-excel"
-                class="bg-green-500 text-primary px-4 py-2 rounded">Download
-                Excel</a> --}}
+
             <a href="javascript:void(0)" id="download-pdf">
-                <img src="/img/pdfi.png" alt="pdf" height="43px" width="43px">
-                Report Tiket
+                <img src="/img/pdfi.png" alt="pdf" height="43px" width="43px"
+                    style="transition: transform 0.3s ease-in-out;" onmouseover="this.style.transform='scale(1.2)';"
+                    onmouseout="this.style.transform='scale(1)';">
             </a>
+
+            <a href="{{ route('export.tikets') }}" id="download-excel">
+                <img src="/img/excel.png" alt="excel" height="55px" width="43px"
+                    style="transition: transform 0.3s ease-in-out;" onmouseover="this.style.transform='scale(1.2)';"
+                    onmouseout="this.style.transform='scale(1)';">
+            </a>
+
 
         </div>
     </div>
@@ -72,6 +78,43 @@
             // Redirect to the PDF download route with query parameters for month and year
             const url = `{{ route('generatePDF') }}?month=${month}&year=${year}`;
             window.location.href = url;
+        });
+        // Check if there's an error in the session and show SweetAlert
+        @if (session('error'))
+            Swal.fire({
+                icon: 'error',
+                title: 'Not Found...',
+                text: '{{ session('error') }}',
+            });
+        @endif
+    </script>
+
+    <script>
+        document.getElementById('download-excel').addEventListener('click', function() {
+            const month = document.getElementById('filter-month').value;
+            const year = document.getElementById('filter-year').value;
+
+            fetch(`{{ route('export.tikets') }}?month=${month}&year=${year}`, {
+                    method: 'GET',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'error') {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'No data available',
+                            text: data.message
+                        });
+                    } else {
+                        // Jika data tersedia, arahkan ke URL untuk mengunduh file Excel
+                        window.location.href =
+                            `{{ route('export.tikets') }}?month=${month}&year=${year}&download=true`;
+                    }
+                })
+
         });
     </script>
 
